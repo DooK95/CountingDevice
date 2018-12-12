@@ -203,7 +203,7 @@ void setup() {
           stoperStop=millis()-stoperStart;//czas trwania pomiaru
           Serial.print("\t");
           Serial.print("Zliczenie nr: ");
-          Serial.print(zliczenie);
+          Serial.println(zliczenie);
           mb.Ireg(SENSOR_IREG, zliczenie);
         }
         pomiar=0 ;
