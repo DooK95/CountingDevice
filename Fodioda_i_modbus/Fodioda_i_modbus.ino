@@ -5,17 +5,17 @@
 
 #define SAMPLES 32         //Must be a power of 2
 #define SAMPLING_FREQUENCY 1000 //Hz, must be less than 10000 due to ADC
-#define OdczytFotodiody A0
-#define wielkoscTab 500
+#define INPUT_PIN A0
+#define TAB_SIZE 400
 
 arduinoFFT FFT = arduinoFFT();
 
-unsigned int i,cod=0/*Ilosc potorzen pentli*/,tab[wielkoscTab],srednia, maks, mini, okres, czestotliwosc=500/*f lasera w Hz*/, sampling_period_us;
-bool pomiar=0,zegar=0,znacznikCzasu=0;
-int seria=0, czasZegara, Konfiguracja = 0; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa Czestotliwosciowa, 2 - Transmisyjna
-unsigned long startT,czas,sredniaSuma,stoperStart,stoperStop,Tpomiaru, zliczenie=0, microseconds;
+unsigned int i,loopCounter=0/*Ilosc powtórzen pętli*/,tab[TAB_SIZE],average, max, min, period, frequency=500/*f lasera w Hz*/, sampling_period_us;
+bool isDetected=0, isClockCounting=0, isLongerThanPeriods=0;
+int mesurmentSeries=0, stopwatchTime, configuration = 1; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa
+unsigned long averageSum, stopwatchStart, detectionTime, counter=0, microseconds;
 float amp=0.3;//wzmocnienie progu aktywacji
-double vReal[SAMPLES],vImag[SAMPLES];
+double vReal[SAMPLES], vImag[SAMPLES];
 
 //Modbus Registers Offsets (0-9999)
 const int SENSOR_IREG = 100;
@@ -24,7 +24,7 @@ const int SENSOR_IREG = 100;
 ModbusIP mb;
 
 
-void setup() {
+void setup() {/*
     //The media access control (ethernet hardware) address for the shield
     byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
     //The IP address for the shield
@@ -33,85 +33,82 @@ void setup() {
     mb.config(mac, ip);
 
     //Add SENSOR_IREG register - Use addIreg() for analog Inputs
-    mb.addIreg(SENSOR_IREG);
+    mb.addIreg(SENSOR_IREG);*/
 
-    //Uruchamiam zegar do pomiaru czasu działania programu
-    startT = millis();
     //Ustawiam port szeregowy
-    Serial.begin(115200);
+    Serial.begin(2000000);
 
     //Parametry początkowe pracy
     Serial.println("");
     Serial.print("Częstotliwość: ");
-    Serial.println(czestotliwosc);
-    okres=1000/czestotliwosc;
-    Serial.print("1 Okres: ");
-    Serial.println(okres);
+    Serial.println(frequency);
+    period=1000/frequency;
+    Serial.print("1 period: ");
+    Serial.println(period);
     Serial.println("Zaczynam");
 
-    //Program zaczyna pracę w jednej z konfiguracji //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa Czestotliwosciowa, 2 - Transmisyjna
-    switch (Konfiguracja) {
+    //Program zaczyna pracę w jednej z konfiguracji //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna
+    switch (configuration) {
         case 0:
         Serial.println("Konfiguracja Odbiciowa AMPLITUDOWA");
 
         //WERSJA 1 - ANALIZA AMPLITUDOWA
         //Uruchamianie pętli programu
         while(true){
-            mb.task();
-            i = analogRead(OdczytFotodiody);//Odczyt z wejścia analogowego
+            //mb.task();
+            i = analogRead(INPUT_PIN);//Odczyt z wejścia analogowego
             Serial.print(i);
 
-            if(cod > wielkoscTab && i>(srednia+amp*srednia) && zegar==0){//po wypełnieniu tabeli danymi, pierwszy warunak na rozpoznanie pomiaru = wykrycie wartości większej
-                stoperStart=millis();
-                Tpomiaru=millis();
-                zegar=1;
+            if(loopCounter > TAB_SIZE && i>(average+amp*average) && isClockCounting==0){//po wypełnieniu tabeli danymi, pierwszy warunak na rozpoznanie isDetectedu = wykrycie wartości większej
+                stopwatchStart=millis();
+                isClockCounting=1;
             }
 
             Serial.print("\t");
-            Serial.print((srednia+amp*srednia)); //wykreslenie progu aktywacji
+            Serial.print((average+amp*average)); //wykreslenie progu aktywacji
             Serial.print("\t");
-            Serial.print(pomiar*100);//wyznaczenie czy pomiar trwa na wykresie
+            Serial.print(isDetected*100);//wyznaczenie czy isDetected trwa na wykresie
 
-            if(zegar==1){
-                czasZegara= millis()-stoperStart;
-                if(czasZegara <= okres*5){
-                    znacznikCzasu=1;
+            if(isClockCounting==1){
+                stopwatchTime= millis()-stopwatchStart;
+                if(stopwatchTime <= period*5){
+                    isLongerThanPeriods=1;
                 }
                 else {
-                    znacznikCzasu=0;
-                    pomiar=0;
-                    zliczenie++;
+                    isLongerThanPeriods=0;
+                    isDetected=0;
+                    counter++;
                     Serial.print("\t");
-                    Serial.print("Zliczenie nr: ");
-                    Serial.print(zliczenie);
-                    mb.Ireg(SENSOR_IREG, zliczenie);
+                    Serial.print("counter nr: ");
+                    Serial.print(counter);
+                    //mb.Ireg(SENSOR_IREG, counter);
                 }
             }
 
-            if(znacznikCzasu==1 && i>(srednia+amp*srednia)){
-                stoperStart=millis();
-                pomiar=1;
+            if(isLongerThanPeriods==1 && i>(average+amp*average)){
+                stopwatchStart=millis();
+                isDetected=1;
             }
 
-            if(pomiar == 0){
-                tab[cod%wielkoscTab]=i;//wpisywanie wartości do tablicy sredniej
-                for(int dlugosc = 0; dlugosc<wielkoscTab; dlugosc++){
-                    sredniaSuma+=tab[dlugosc];//wyliczana suma do obliczenia sredniej
+            if(isDetected == 0){
+                tab[loopCounter%TAB_SIZE]=i;//wpisywanie wartości do tablicy sredniej
+                for(int dlugosc = 0; dlugosc<TAB_SIZE; dlugosc++){
+                    averageSum+=tab[dlugosc];//wyliczana suma do obliczenia sredniej
                 }
-                srednia=sredniaSuma/wielkoscTab;//wyliczanie sredniej
+                average=averageSum/TAB_SIZE;//wyliczanie sredniej
             }
 
-            if(i<srednia+0.7*srednia){
-                if(pomiar==1){
-                    stoperStop=millis()-Tpomiaru;//czas trwania pomiaru
+            if(i<average+0.7*average){
+                if(isDetected==1){
+                    detectionTime=millis()-stopwatchStart;//czas trwania isDetectedu
                 }else{
-                    czasZegara=0;
-                    zegar=0;
+                    stopwatchTime=0;
+                    isClockCounting=0;
                 }
             }
 
-            sredniaSuma=0;//zerwonie sumy sredniej
-            cod++; //licznik wykonanych pętli
+            averageSum=0;//zerwonie sumy sredniej
+            loopCounter++; //licznik wykonanych pętli
             Serial.println();
         }
         break;
@@ -119,13 +116,13 @@ void setup() {
         //-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         case 1:
-        Serial.println("Konfiguracja Odbiciowa CZESTOTLIWOSCIOWA");
+        Serial.println("Konfiguracja Odbiciowa Częstotliwościowa");
 
-        //WERSJA 2 - ANALIZA CZESTOTLIWOSCIOWA
+        //WERSJA 2 - ANALIZA Częstotliwościowa
         //Uruchamianie pętli programu
         sampling_period_us = round(1000000*(1.0/SAMPLING_FREQUENCY));
         while(true){
-            mb.task();
+            //mb.task();
 
             /*SAMPLING*/
             for(int i=0; i<SAMPLES; i++)
@@ -146,21 +143,21 @@ void setup() {
             double peak = FFT.MajorPeak(vReal, SAMPLES, SAMPLING_FREQUENCY);
 
             /*PRINT RESULTS*/
-            Serial.print(peak); Serial.print("\t");Serial.print(seria); Serial.print("\t"); Serial.print(znacznikCzasu*100); Serial.print("\t"); Serial.println(zliczenie);     //Print out what frequency is the most dominant.
+            Serial.print(peak); Serial.print("\t");Serial.print(mesurmentSeries); Serial.print("\t"); Serial.print(isLongerThanPeriods*100); Serial.print("\t"); Serial.println(counter);     //Print out what frequency is the most dominant.
             if(peak > 450){
-                pomiar=1;
-                seria++;
-                if(seria > 2){
-                    znacznikCzasu=1;
+                isDetected=1;
+                mesurmentSeries++;
+                if(mesurmentSeries > 2){
+                    isLongerThanPeriods=1;
                 }
             }else{
-                if(znacznikCzasu==1){
-                    zliczenie++;
-                    znacznikCzasu = 0;
-                    mb.Ireg(SENSOR_IREG, zliczenie);
+                if(isLongerThanPeriods==1){
+                    counter++;
+                    isLongerThanPeriods = 0;
+                    //mb.Ireg(SENSOR_IREG, counter);
                 }
-                pomiar = 0;
-                seria = 0;
+                isDetected = 0;
+                mesurmentSeries = 0;
             }
         }
         //KONIEC WERSJI 2
@@ -170,49 +167,49 @@ void setup() {
         Serial.println("Konfiguracja Transmisyjna Amplitudowa");
 
         while(true){
-            mb.task();
-            i = analogRead(OdczytFotodiody);
+            //mb.task();
+            i = analogRead(INPUT_PIN);
             Serial.print(i);
 
-            if(cod > wielkoscTab && i<srednia && zegar==0){//prawda gdy pętla się skalibruje
-                stoperStart=millis();
-                zegar=1;
+            if(loopCounter > TAB_SIZE && i<average && isClockCounting==0){//prawda gdy pętla się skalibruje
+                stopwatchStart=millis();
+                isClockCounting=1;
             }
 
-            if(zegar==1){
-                czasZegara= millis()-stoperStart;
-                if(czasZegara > okres*2) pomiar=1;
+            if(isClockCounting==1){
+                stopwatchTime= millis()-stopwatchStart;
+                if(stopwatchTime > period*2) isDetected=1;
             }
 
-            if(pomiar == 0){
-                tab[cod%wielkoscTab]=i;//wpisywanie wartości do tablicy sredniej
-                for(int dlugosc = 0; dlugosc<wielkoscTab; dlugosc++){
-                    sredniaSuma+=tab[dlugosc];//wyliczana suma do obliczenia sredniej
+            if(isDetected == 0){
+                tab[loopCounter%TAB_SIZE]=i;//wpisywanie wartości do tablicy sredniej
+                for(int dlugosc = 0; dlugosc<TAB_SIZE; dlugosc++){
+                    averageSum+=tab[dlugosc];//wyliczana suma do obliczenia sredniej
                 }
-                srednia=sredniaSuma/wielkoscTab;//wyliczanie sredniej
+                average=averageSum/TAB_SIZE;//wyliczanie sredniej
             }
 
             Serial.print("\t");
-            Serial.print(srednia);
+            Serial.print(average);
             Serial.print("\t");
-            Serial.print(pomiar*100);
+            Serial.print(isDetected*100);
 
-            if(i>srednia){
-                if(pomiar==1){
-                    zliczenie++;
-                    stoperStop=millis()-stoperStart;//czas trwania pomiaru
+            if(i>average){
+                if(isDetected==1){
+                    counter++;
+                    detectionTime=millis()-stopwatchStart;//czas trwania isDetectedu
                     Serial.print("\t");
-                    Serial.print("Zliczenie nr: ");
-                    Serial.println(zliczenie);
-                    mb.Ireg(SENSOR_IREG, zliczenie);
+                    Serial.print("counter nr: ");
+                    Serial.println(counter);
+                    //mb.Ireg(SENSOR_IREG, counter);
                 }
-                pomiar=0 ;
-                czasZegara=0;
-                zegar=0;
+                isDetected=0 ;
+                stopwatchTime=0;
+                isClockCounting=0;
             }
 
-            sredniaSuma=0;//zerwonie sumy sredniej
-            cod++; //licznik wykonanych pętli
+            averageSum=0;//zerwonie sumy sredniej
+            loopCounter++; //licznik wykonanych pętli
             Serial.println();
         }
         break;
