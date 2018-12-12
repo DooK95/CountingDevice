@@ -24,7 +24,7 @@ const int SENSOR_IREG = 100;
 ModbusIP mb;
 
 
-void setup() {/*
+void setup() {
     //The media access control (ethernet hardware) address for the shield
     byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
     //The IP address for the shield
@@ -33,7 +33,10 @@ void setup() {/*
     mb.config(mac, ip);
 
     //Add SENSOR_IREG register - Use addIreg() for analog Inputs
-    mb.addIreg(SENSOR_IREG);*/
+    mb.addIreg(SENSOR_IREG);
+
+    //Modbus start 
+    mb.task();
 
     //Ustawiam port szeregowy
     Serial.begin(2000000);
@@ -55,7 +58,6 @@ void setup() {/*
         //WERSJA 1 - ANALIZA AMPLITUDOWA
         //Uruchamianie pętli programu
         while(true){
-            //mb.task();
             i = analogRead(INPUT_PIN);//Odczyt z wejścia analogowego
             Serial.print(i);
 
@@ -81,7 +83,7 @@ void setup() {/*
                     Serial.print("\t");
                     Serial.print("counter nr: ");
                     Serial.print(counter);
-                    //mb.Ireg(SENSOR_IREG, counter);
+                    mb.Ireg(SENSOR_IREG, counter);
                 }
             }
 
@@ -122,7 +124,6 @@ void setup() {/*
         //Uruchamianie pętli programu
         sampling_period_us = round(1000000*(1.0/SAMPLING_FREQUENCY));
         while(true){
-            //mb.task();
 
             /*SAMPLING*/
             for(int i=0; i<SAMPLES; i++)
@@ -154,7 +155,7 @@ void setup() {/*
                 if(isLongerThanPeriods==1){
                     counter++;
                     isLongerThanPeriods = 0;
-                    //mb.Ireg(SENSOR_IREG, counter);
+                    mb.Ireg(SENSOR_IREG, counter);
                 }
                 isDetected = 0;
                 mesurmentSeries = 0;
@@ -167,7 +168,6 @@ void setup() {/*
         Serial.println("Konfiguracja Transmisyjna Amplitudowa");
 
         while(true){
-            //mb.task();
             i = analogRead(INPUT_PIN);
             Serial.print(i);
 
@@ -201,7 +201,7 @@ void setup() {/*
                     Serial.print("\t");
                     Serial.print("counter nr: ");
                     Serial.println(counter);
-                    //mb.Ireg(SENSOR_IREG, counter);
+                    mb.Ireg(SENSOR_IREG, counter);
                 }
                 isDetected=0 ;
                 stopwatchTime=0;
