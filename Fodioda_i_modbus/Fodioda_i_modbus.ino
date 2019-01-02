@@ -2,6 +2,7 @@
 #include <Modbus.h>
 #include <ModbusIP_ENC28J60.h>
 #include <arduinoFFT.h>
+#include <EEPROM.h>
 
 #define SAMPLES 32         //Must be a power of 2
 #define SAMPLING_FREQUENCY 1000 //Hz, must be less than 10000 due to ADC
@@ -10,7 +11,7 @@
 
 arduinoFFT FFT = arduinoFFT();
 
-unsigned int i,loopCounter=0/*Ilosc powtórzen pętli*/,tab[TAB_SIZE],average, max, min, period, frequency=500/*f lasera w Hz*/, sampling_period_us;
+unsigned int i,loopCounter=0, tab[TAB_SIZE],average, max, min, period, frequency=500/*f lasera w Hz*/, sampling_period_us;
 bool isDetected=0, isClockCounting=0, isLongerThanPeriods=0;
 int mesurmentSeries=0, stopwatchTime, configuration = 1; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa
 unsigned long averageSum, stopwatchStart, detectionTime, counter=0, microseconds;
@@ -35,11 +36,15 @@ void setup() {
     //Add SENSOR_IREG register - Use addIreg() for analog Inputs
     mb.addIreg(SENSOR_IREG);
 
-    //Modbus start 
+    //Modbus start
     mb.task();
 
     //Ustawiam port szeregowy
     Serial.begin(2000000);
+
+    //Ustawiam przerwania
+    attachInterrupt(digitalPinToInterrupt(2), riseF, RISING);
+    attachInterrupt(digitalPinToInterrupt(3), change, RISING);
 
     //Parametry początkowe pracy
     Serial.println("");
@@ -214,4 +219,17 @@ void setup() {
         }
         break;
     }
+}
+
+void menu() {
+    noInterrupts();
+    Serial.println("");
+    Serial.print("Częstotliwość lasera: "+frequency+" || Konfiguracja: "+configuration + " //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa Częstotliwościowa, 2 - Transmisyjna Amplitudowa");
+    Serial.println("P1 - zmień częstotliwość | P2 - zmień konfiguracje");
+    unsigned int timeBegin = millis();
+    while (millis() - timeBegin < 8000) {
+
+    }
+    interrupts();
+
 }
