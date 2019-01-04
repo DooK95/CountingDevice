@@ -21,38 +21,34 @@ double vReal[SAMPLES], vImag[SAMPLES];
 //Modbus Registers Offsets (0-9999)
 const int SENSOR_IREG = 100;
 
-//ModbusIP object
-ModbusIP mb;
-
 
 void setup() {
+
+    //---Modbus Declaration---
+    //ModbusIP object
+    ModbusIP mb;
     //The media access control (ethernet hardware) address for the shield
     byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
     //The IP address for the shield
     byte ip[] = { 192, 168, 0, 24 };
     //Config Modbus IP
     mb.config(mac, ip);
-
     //Add SENSOR_IREG register - Use addIreg() for analog Inputs
     mb.addIreg(SENSOR_IREG);
-
     //Modbus start
     mb.task();
+    //---Modbus Declaration---
 
     //Ustawiam port szeregowy
     Serial.begin(2000000);
 
     //Ustawiam przerwania
     attachInterrupt(digitalPinToInterrupt(2), riseF, RISING);
-    attachInterrupt(digitalPinToInterrupt(3), change, RISING);
+    attachInterrupt(digitalPinToInterrupt(3), changeConf, RISING);
 
     //Parametry początkowe pracy
     Serial.println("");
-    Serial.print("Częstotliwość: ");
-    Serial.println(frequency);
-    period=1000/frequency;
-    Serial.print("1 period: ");
-    Serial.println(period);
+    Serial.println("Częstotliwość lasera: "+frequency);
     Serial.println("Zaczynam");
 
     //Program zaczyna pracę w jednej z konfiguracji //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna
@@ -221,15 +217,22 @@ void setup() {
     }
 }
 
-void menu() {
+void riseF() {
     noInterrupts();
-    Serial.println("");
-    Serial.print("Częstotliwość lasera: "+frequency+" || Konfiguracja: "+configuration + " //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa Częstotliwościowa, 2 - Transmisyjna Amplitudowa");
-    Serial.println("P1 - zmień częstotliwość | P2 - zmień konfiguracje");
-    unsigned int timeBegin = millis();
-    while (millis() - timeBegin < 8000) {
-
+    frequency += 10;
+    if (frequency > 500) {
+        frequency = 10;
     }
+    Serial.println("Częstotliwość lasera: "+frequency+" | 10-500 [Hz]");
     interrupts();
+}
 
+void changeConf() {
+    noInterrupts();
+    configuration += 1;
+    if (configuration > 2) {
+        configuration = 0;
+    }
+    Serial.println("Konfiguracja: "+configuration+" | 0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa");
+    interrupts();
 }
