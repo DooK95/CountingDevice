@@ -13,20 +13,19 @@ arduinoFFT FFT = arduinoFFT();
 
 unsigned int i,loopCounter=0, tab[TAB_SIZE],average, max, min, period, frequency=500/*f lasera w Hz*/, sampling_period_us;
 bool isDetected=0, isClockCounting=0, isLongerThanPeriods=0;
-int mesurmentSeries=0, stopwatchTime, configuration = 1; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa
+int mesurmentSeries=0, stopwatchTime, configuration = 0; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa
 unsigned long averageSum, stopwatchStart, detectionTime, counter=0, microseconds;
-float amp=0.3;//wzmocnienie progu aktywacji
+float amp=1.3;//wzmocnienie progu aktywacji
 double vReal[SAMPLES], vImag[SAMPLES];
 
 //Modbus Registers Offsets (0-9999)
 const int SENSOR_IREG = 100;
+//ModbusIP objectModbusIP mb;
 
 
 void setup() {
-
+/*
     //---Modbus Declaration---
-    //ModbusIP object
-    ModbusIP mb;
     //The media access control (ethernet hardware) address for the shield
     byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
     //The IP address for the shield
@@ -38,9 +37,20 @@ void setup() {
     //Modbus start
     mb.task();
     //---Modbus Declaration---
+    Serial.println("Modbus Ready");*/
+
+    int f = EEPROM.read(0);
+    if (f >= 10 && f<= 500 && f%10==0) {
+        frequency = f;
+    }
+    int c = EEPROM.read(1);
+    if (c >= 0 && c<= 2) {
+        configuration = c;
+    }
+    Serial.println("EEPROM Load Ready");
 
     //Ustawiam port szeregowy
-    Serial.begin(2000000);
+    Serial.begin(19200);
 
     //Ustawiam przerwania
     attachInterrupt(digitalPinToInterrupt(2), riseF, RISING);
@@ -49,6 +59,7 @@ void setup() {
     //Parametry początkowe pracy
     Serial.println("");
     Serial.println("Częstotliwość lasera: "+frequency);
+    period = 1000/frequency;
     Serial.println("Zaczynam");
 
     //Program zaczyna pracę w jednej z konfiguracji //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna
@@ -62,19 +73,19 @@ void setup() {
             i = analogRead(INPUT_PIN);//Odczyt z wejścia analogowego
             Serial.print(i);
 
-            if(loopCounter > TAB_SIZE && i>(average+amp*average) && isClockCounting==0){//po wypełnieniu tabeli danymi, pierwszy warunak na rozpoznanie isDetectedu = wykrycie wartości większej
+            if(loopCounter > TAB_SIZE && i>(amp*average) && isClockCounting==0){//po wypełnieniu tabeli danymi, pierwszy warunak na rozpoznanie isDetectedu = wykrycie wartości większej
                 stopwatchStart=millis();
                 isClockCounting=1;
             }
 
             Serial.print("\t");
-            Serial.print((average+amp*average)); //wykreslenie progu aktywacji
+            Serial.print(amp*average); //wykreslenie progu aktywacji
             Serial.print("\t");
             Serial.print(isDetected*100);//wyznaczenie czy isDetected trwa na wykresie
 
             if(isClockCounting==1){
                 stopwatchTime= millis()-stopwatchStart;
-                if(stopwatchTime <= period*5){
+                if(stopwatchTime > 2*period){
                     isLongerThanPeriods=1;
                 }
                 else {
@@ -84,11 +95,11 @@ void setup() {
                     Serial.print("\t");
                     Serial.print("counter nr: ");
                     Serial.print(counter);
-                    mb.Ireg(SENSOR_IREG, counter);
+//                    mb.Ireg(SENSOR_IREG, counter);
                 }
             }
 
-            if(isLongerThanPeriods==1 && i>(average+amp*average)){
+            if(isLongerThanPeriods==1 && i<(average)){
                 stopwatchStart=millis();
                 isDetected=1;
             }
@@ -101,7 +112,7 @@ void setup() {
                 average=averageSum/TAB_SIZE;//wyliczanie sredniej
             }
 
-            if(i<average+0.7*average){
+            if(i>average){
                 if(isDetected==1){
                     detectionTime=millis()-stopwatchStart;//czas trwania isDetectedu
                 }else{
@@ -146,7 +157,7 @@ void setup() {
 
             /*PRINT RESULTS*/
             Serial.print(peak); Serial.print("\t");Serial.print(mesurmentSeries); Serial.print("\t"); Serial.print(isLongerThanPeriods*100); Serial.print("\t"); Serial.println(counter);     //Print out what frequency is the most dominant.
-            if(peak > 450){
+            if(peak > (frequency*90)/100){
                 isDetected=1;
                 mesurmentSeries++;
                 if(mesurmentSeries > 2){
@@ -156,7 +167,7 @@ void setup() {
                 if(isLongerThanPeriods==1){
                     counter++;
                     isLongerThanPeriods = 0;
-                    mb.Ireg(SENSOR_IREG, counter);
+//                    mb.Ireg(SENSOR_IREG, counter);
                 }
                 isDetected = 0;
                 mesurmentSeries = 0;
@@ -202,7 +213,7 @@ void setup() {
                     Serial.print("\t");
                     Serial.print("counter nr: ");
                     Serial.println(counter);
-                    mb.Ireg(SENSOR_IREG, counter);
+//                    mb.Ireg(SENSOR_IREG, counter);
                 }
                 isDetected=0 ;
                 stopwatchTime=0;
@@ -217,13 +228,19 @@ void setup() {
     }
 }
 
+void loop(){
+}
+
 void riseF() {
     noInterrupts();
     frequency += 10;
     if (frequency > 500) {
         frequency = 10;
     }
-    Serial.println("Częstotliwość lasera: "+frequency+" | 10-500 [Hz]");
+    Serial.print("Częstotliwość lasera: ");
+    Serial.print(frequency);
+    Serial.println(" | 10-500 [Hz]");
+    EEPROM.write(0, frequency);
     interrupts();
 }
 
@@ -233,6 +250,9 @@ void changeConf() {
     if (configuration > 2) {
         configuration = 0;
     }
-    Serial.println("Konfiguracja: "+configuration+" | 0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa");
+    Serial.print("Konfiguracja: ");
+    Serial.print(configuration);
+    Serial.println(" | 0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa");
+    EEPROM.write(1, configuration);
     interrupts();
 }
