@@ -13,9 +13,9 @@ arduinoFFT FFT = arduinoFFT();
 
 unsigned int i,loopCounter=0, tab[TAB_SIZE],average, max, min, period, frequency=500/*f lasera w Hz*/, sampling_period_us;
 bool isDetected=0, isClockCounting=0, isLongerThanPeriods=0;
-int mesurmentSeries=0, stopwatchTime, configuration = 0; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa
+int mesurmentSeries=0, stopwatchTime, configuration = 1; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa
 unsigned long averageSum, stopwatchStart, detectionTime, counter=0, microseconds;
-float amp=1.3;//wzmocnienie progu aktywacji
+float amp=2;//wzmocnienie progu aktywacji
 double vReal[SAMPLES], vImag[SAMPLES];
 
 //Modbus Registers Offsets (0-9999)
@@ -39,7 +39,7 @@ void setup() {
     //---Modbus Declaration---
     Serial.println("Modbus Ready");*/
 
-    int f = EEPROM.read(0);
+    /*int f = EEPROM.read(0);
     if (f >= 10 && f<= 500 && f%10==0) {
         frequency = f;
     }
@@ -47,7 +47,7 @@ void setup() {
     if (c >= 0 && c<= 2) {
         configuration = c;
     }
-    Serial.println("EEPROM Load Ready");
+    Serial.println("EEPROM Load Ready");*/
 
     //Ustawiam port szeregowy
     Serial.begin(19200);
@@ -57,9 +57,14 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(3), changeConf, RISING);
 
     //Parametry początkowe pracy
+    
+    while (!Serial) ;
     Serial.println("");
-    Serial.println("Częstotliwość lasera: "+frequency);
+    Serial.print("Częstotliwość lasera: ");
+    Serial.println(frequency);
     period = 1000/frequency;
+    Serial.print("Okres: ");
+    Serial.println(period);
     Serial.println("Zaczynam");
 
     //Program zaczyna pracę w jednej z konfiguracji //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna
@@ -85,12 +90,13 @@ void setup() {
 
             if(isClockCounting==1){
                 stopwatchTime= millis()-stopwatchStart;
-                if(stopwatchTime > 2*period){
+                if(stopwatchTime <= period*10){
                     isLongerThanPeriods=1;
                 }
                 else {
                     isLongerThanPeriods=0;
-                    isDetected=0;
+                    isDetected = 0;
+                    isClockCounting=0;
                     counter++;
                     Serial.print("\t");
                     Serial.print("counter nr: ");
@@ -99,7 +105,7 @@ void setup() {
                 }
             }
 
-            if(isLongerThanPeriods==1 && i<(average)){
+            if(isLongerThanPeriods==1 && i>(amp*average)){
                 stopwatchStart=millis();
                 isDetected=1;
             }
@@ -111,16 +117,6 @@ void setup() {
                 }
                 average=averageSum/TAB_SIZE;//wyliczanie sredniej
             }
-
-            if(i>average){
-                if(isDetected==1){
-                    detectionTime=millis()-stopwatchStart;//czas trwania isDetectedu
-                }else{
-                    stopwatchTime=0;
-                    isClockCounting=0;
-                }
-            }
-
             averageSum=0;//zerwonie sumy sredniej
             loopCounter++; //licznik wykonanych pętli
             Serial.println();
@@ -190,7 +186,7 @@ void setup() {
 
             if(isClockCounting==1){
                 stopwatchTime= millis()-stopwatchStart;
-                if(stopwatchTime > period*2) isDetected=1;
+                if(stopwatchTime > period*10) isDetected=1;
             }
 
             if(isDetected == 0){
