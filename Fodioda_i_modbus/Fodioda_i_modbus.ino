@@ -7,26 +7,30 @@
 #define SAMPLES 32         //Must be a power of 2
 #define SAMPLING_FREQUENCY 1000 //Hz, must be less than 10000 due to ADC
 #define INPUT_PIN A0
-#define TAB_SIZE 400
+#define TAB_SIZE 300
 
 arduinoFFT FFT = arduinoFFT();
 
-unsigned int i,loopCounter=0, tab[TAB_SIZE],average, max, min, period, frequency=500/*f lasera w Hz*/, sampling_period_us;
+unsigned int i,loopCounter=0, tab[TAB_SIZE],average, max, min, period, sampling_period_us;
+volatile unsigned int frequency=500/*f lasera w Hz*/;
 bool isDetected=0, isClockCounting=0, isLongerThanPeriods=0;
-int mesurmentSeries=0, stopwatchTime, configuration = 1; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa
+int pinTwo, pinThree, mesurmentSeries=0, stopwatchTime, configuration = 1; //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa
 unsigned long averageSum, stopwatchStart, detectionTime, counter=0, microseconds;
 float amp=2;//wzmocnienie progu aktywacji
-double vReal[SAMPLES], vImag[SAMPLES];
-
-//Modbus Registers Offsets (0-9999)
-const int SENSOR_IREG = 100;
-//ModbusIP objectModbusIP mb;
+double vReal[SAMPLES], vImag[SAMPLES], peak;
 
 
 void setup() {
-/*
+
+    //Ustawiam port szeregowy
+    Serial.begin(19200);
+    while (!Serial);
+    
     //---Modbus Declaration---
     //The media access control (ethernet hardware) address for the shield
+    //Modbus Registers Offsets (0-9999)
+    const int SENSOR_IREG = 100;
+    ModbusIP mb;
     byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
     //The IP address for the shield
     byte ip[] = { 192, 168, 0, 24 };
@@ -35,11 +39,11 @@ void setup() {
     //Add SENSOR_IREG register - Use addIreg() for analog Inputs
     mb.addIreg(SENSOR_IREG);
     //Modbus start
-    mb.task();
+    //mb.task();
     //---Modbus Declaration---
-    Serial.println("Modbus Ready");*/
+    Serial.println("Modbus Ready");
 
-    /*int f = EEPROM.read(0);
+    int f = EEPROM.read(0);
     if (f >= 10 && f<= 500 && f%10==0) {
         frequency = f;
     }
@@ -47,18 +51,13 @@ void setup() {
     if (c >= 0 && c<= 2) {
         configuration = c;
     }
-    Serial.println("EEPROM Load Ready");*/
-
-    //Ustawiam port szeregowy
-    Serial.begin(19200);
+    Serial.println("EEPROM Load Ready");
 
     //Ustawiam przerwania
-    attachInterrupt(digitalPinToInterrupt(2), riseF, RISING);
-    attachInterrupt(digitalPinToInterrupt(3), changeConf, RISING);
+    pinMode(2, INPUT_PULLUP);
+    pinMode(3, INPUT_PULLUP);
 
     //Parametry początkowe pracy
-    
-    while (!Serial) ;
     Serial.println("");
     Serial.print("Częstotliwość lasera: ");
     Serial.println(frequency);
@@ -68,6 +67,7 @@ void setup() {
     Serial.println("Zaczynam");
 
     //Program zaczyna pracę w jednej z konfiguracji //0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna
+    while(true){
     switch (configuration) {
         case 0:
         Serial.println("Konfiguracja Odbiciowa AMPLITUDOWA");
@@ -75,8 +75,10 @@ void setup() {
         //WERSJA 1 - ANALIZA AMPLITUDOWA
         //Uruchamianie pętli programu
         while(true){
+
             i = analogRead(INPUT_PIN);//Odczyt z wejścia analogowego
             Serial.print(i);
+            mb.task();
 
             if(loopCounter > TAB_SIZE && i>(amp*average) && isClockCounting==0){//po wypełnieniu tabeli danymi, pierwszy warunak na rozpoznanie isDetectedu = wykrycie wartości większej
                 stopwatchStart=millis();
@@ -101,7 +103,7 @@ void setup() {
                     Serial.print("\t");
                     Serial.print("counter nr: ");
                     Serial.print(counter);
-//                    mb.Ireg(SENSOR_IREG, counter);
+                    mb.Ireg(SENSOR_IREG, counter);
                 }
             }
 
@@ -120,6 +122,16 @@ void setup() {
             averageSum=0;//zerwonie sumy sredniej
             loopCounter++; //licznik wykonanych pętli
             Serial.println();
+
+            pinTwo = digitalRead(2);
+            pinThree = digitalRead(3);
+            if (pinTwo == LOW) {
+                riseF();
+            }
+            if (pinThree == LOW) {
+                changeConf();
+                break;
+            }
         }
         break;
         //KONIEC WERSJI 1
@@ -130,8 +142,10 @@ void setup() {
 
         //WERSJA 2 - ANALIZA Częstotliwościowa
         //Uruchamianie pętli programu
-        sampling_period_us = round(1000000*(1.0/SAMPLING_FREQUENCY));
         while(true){
+            mb.task();
+            sampling_period_us = round(1000000*(1.0/SAMPLING_FREQUENCY));
+
 
             /*SAMPLING*/
             for(int i=0; i<SAMPLES; i++)
@@ -149,7 +163,7 @@ void setup() {
             FFT.Windowing(vReal, SAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
             FFT.Compute(vReal, vImag, SAMPLES, FFT_FORWARD);
             FFT.ComplexToMagnitude(vReal, vImag, SAMPLES);
-            double peak = FFT.MajorPeak(vReal, SAMPLES, SAMPLING_FREQUENCY);
+            peak = FFT.MajorPeak(vReal, SAMPLES, SAMPLING_FREQUENCY);
 
             /*PRINT RESULTS*/
             Serial.print(peak); Serial.print("\t");Serial.print(mesurmentSeries); Serial.print("\t"); Serial.print(isLongerThanPeriods*100); Serial.print("\t"); Serial.println(counter);     //Print out what frequency is the most dominant.
@@ -163,10 +177,20 @@ void setup() {
                 if(isLongerThanPeriods==1){
                     counter++;
                     isLongerThanPeriods = 0;
-//                    mb.Ireg(SENSOR_IREG, counter);
+                    mb.Ireg(SENSOR_IREG, counter);
                 }
                 isDetected = 0;
                 mesurmentSeries = 0;
+            }
+
+            pinTwo = digitalRead(2);
+            pinThree = digitalRead(3);
+            if (pinTwo == LOW) {
+                riseF();
+            }
+            if (pinThree == LOW) {
+                changeConf();
+                break;
             }
         }
         //KONIEC WERSJI 2
@@ -174,10 +198,11 @@ void setup() {
         //-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
         case 2:
         Serial.println("Konfiguracja Transmisyjna Amplitudowa");
-
         while(true){
+
             i = analogRead(INPUT_PIN);
             Serial.print(i);
+            mb.task();
 
             if(loopCounter > TAB_SIZE && i<average && isClockCounting==0){//prawda gdy pętla się skalibruje
                 stopwatchStart=millis();
@@ -209,7 +234,7 @@ void setup() {
                     Serial.print("\t");
                     Serial.print("counter nr: ");
                     Serial.println(counter);
-//                    mb.Ireg(SENSOR_IREG, counter);
+                    mb.Ireg(SENSOR_IREG, counter);
                 }
                 isDetected=0 ;
                 stopwatchTime=0;
@@ -219,29 +244,38 @@ void setup() {
             averageSum=0;//zerwonie sumy sredniej
             loopCounter++; //licznik wykonanych pętli
             Serial.println();
+
+            pinTwo = digitalRead(2);
+            pinThree = digitalRead(3);
+            if (pinTwo == LOW) {
+                riseF();
+            }
+            if (pinThree == LOW) {
+                changeConf();
+                break;
+            }
         }
         break;
     }
+}
 }
 
 void loop(){
 }
 
 void riseF() {
-    noInterrupts();
     frequency += 10;
     if (frequency > 500) {
-        frequency = 10;
+        frequency = 100;
     }
     Serial.print("Częstotliwość lasera: ");
     Serial.print(frequency);
     Serial.println(" | 10-500 [Hz]");
     EEPROM.write(0, frequency);
-    interrupts();
+    delay(500);
 }
 
 void changeConf() {
-    noInterrupts();
     configuration += 1;
     if (configuration > 2) {
         configuration = 0;
@@ -250,5 +284,5 @@ void changeConf() {
     Serial.print(configuration);
     Serial.println(" | 0 - Odbiciowa Amplitudowa, 1 - Odbiciowa frequencyiowa, 2 - Transmisyjna Amplitudowa");
     EEPROM.write(1, configuration);
-    interrupts();
+    delay(500);
 }
